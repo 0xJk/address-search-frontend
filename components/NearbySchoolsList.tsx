@@ -2,6 +2,7 @@ interface School {
   school_name: string;
   school_type: string | null;
   school_sector: string | null;
+  suburb?: string | null;
   distance_meters: number;
   rating_overall: number | null;
   rating_academic: number | null;
@@ -105,6 +106,9 @@ export default function NearbySchoolsList({ schools }: NearbySchoolsListProps) {
                     <SchoolTypeBadge type={school.school_type} />
                     <SectorBadge sector={school.school_sector} />
                   </div>
+                  {school.suburb && (
+                    <p className="text-xs text-gray-500 mt-0.5">{school.suburb}</p>
+                  )}
                   <div className="mt-2 flex flex-wrap gap-4 text-sm text-gray-600">
                     {school.phone && (
                       <span className="flex items-center gap-1">

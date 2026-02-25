@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import AddressValidationDialog from '@/components/AddressValidationDialog';
 
 interface SearchBarProps {
   variant?: 'hero' | 'nav';
@@ -12,10 +13,20 @@ export default function SearchBar({ variant = 'hero', defaultValue = '' }: Searc
   const [address, setAddress] = useState(defaultValue);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [showCorrectionDialog, setShowCorrectionDialog] = useState(false);
+  const [correctedAddress, setCorrectedAddress] = useState<string | null>(null);
+  const [pendingOriginalAddress, setPendingOriginalAddress] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const router = useRouter();
+
+  const navigateToProperty = (addr: string) => {
+    router.push(`/property?address=${encodeURIComponent(addr)}`);
+  };
 
   const fetchSuggestions = async (input: string) => {
     if (input.length < 3 || typeof google === 'undefined') {
@@ -29,10 +40,8 @@ export default function SearchBar({ variant = 'hero', defaultValue = '' }: Searc
       const response = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
         input,
         includedRegionCodes: ['au'],
-        includedPrimaryTypes: ['address'],
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setSuggestions(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (response.suggestions as any[])
@@ -49,6 +58,7 @@ export default function SearchBar({ variant = 'hero', defaultValue = '' }: Searc
     const value = e.target.value;
     setAddress(value);
     setShowSuggestions(true);
+    setValidationError(null);
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => fetchSuggestions(value), 300);
@@ -58,6 +68,7 @@ export default function SearchBar({ variant = 'hero', defaultValue = '' }: Searc
     setAddress(suggestion);
     setSuggestions([]);
     setShowSuggestions(false);
+    setValidationError(null);
     inputRef.current?.focus();
   };
 
@@ -72,10 +83,56 @@ export default function SearchBar({ variant = 'hero', defaultValue = '' }: Searc
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSearch = () => {
-    if (!address.trim()) return;
+  const handleSearch = async () => {
+    const trimmed = address.trim();
+    if (!trimmed) return;
     setShowSuggestions(false);
-    router.push(`/property?address=${encodeURIComponent(address.trim())}`);
+    setValidationError(null);
+
+    // Cancel previous in-flight request
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setIsValidating(true);
+
+    try {
+      const res = await fetch('/api/validate-address', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: trimmed }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        // Fail open: navigate with original address
+        navigateToProperty(trimmed);
+        return;
+      }
+
+      const data = await res.json();
+
+      if (!data.isValid || !data.formattedAddress) {
+        setValidationError('This address could not be validated. Please check and try again.');
+        return;
+      }
+
+      if (data.hasReplacedComponents || data.hasSpellCorrectedComponents) {
+        setPendingOriginalAddress(trimmed);
+        setCorrectedAddress(data.formattedAddress);
+        setShowCorrectionDialog(true);
+        return;
+      }
+
+      // Valid, no corrections — navigate with formatted address
+      navigateToProperty(data.formattedAddress);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return;
+      // Fail open: navigate with original address
+      navigateToProperty(trimmed);
+    } finally {
+      setIsValidating(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -84,6 +141,18 @@ export default function SearchBar({ variant = 'hero', defaultValue = '' }: Searc
     } else if (e.key === 'Escape') {
       setShowSuggestions(false);
     }
+  };
+
+  const handleSelectCorrected = () => {
+    setShowCorrectionDialog(false);
+    if (correctedAddress) {
+      navigateToProperty(correctedAddress);
+    }
+  };
+
+  const handleSelectOriginal = () => {
+    setShowCorrectionDialog(false);
+    navigateToProperty(pendingOriginalAddress);
   };
 
   const suggestionList =
@@ -104,6 +173,38 @@ export default function SearchBar({ variant = 'hero', defaultValue = '' }: Searc
       </ul>
     ) : null;
 
+  const searchIcon = (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={variant === 'hero' ? '20' : '16'}
+      height={variant === 'hero' ? '20' : '16'}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.35-4.35" />
+    </svg>
+  );
+
+  const spinnerIcon = (
+    <svg
+      className="animate-spin"
+      xmlns="http://www.w3.org/2000/svg"
+      width={variant === 'hero' ? '20' : '16'}
+      height={variant === 'hero' ? '20' : '16'}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+    </svg>
+  );
+
   if (variant === 'hero') {
     return (
       <div className="w-full max-w-2xl mx-auto">
@@ -121,28 +222,27 @@ export default function SearchBar({ variant = 'hero', defaultValue = '' }: Searc
             />
             <button
               onClick={handleSearch}
-              className="flex items-center gap-2 px-6 py-4 bg-blue-700 text-white font-medium hover:bg-blue-800 transition-colors"
+              disabled={isValidating}
+              className="flex items-center gap-2 px-6 py-4 bg-blue-700 text-white font-medium hover:bg-blue-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ backgroundColor: '#1d4ed8' }}
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <path d="m21 21-4.35-4.35" />
-              </svg>
-              <span>Search</span>
+              {isValidating ? spinnerIcon : searchIcon}
+              <span>{isValidating ? 'Validating...' : 'Search'}</span>
             </button>
           </div>
           {suggestionList}
+          {validationError && (
+            <p className="mt-2 text-sm text-red-600">{validationError}</p>
+          )}
         </div>
+        <AddressValidationDialog
+          open={showCorrectionDialog}
+          onOpenChange={setShowCorrectionDialog}
+          originalAddress={pendingOriginalAddress}
+          correctedAddress={correctedAddress || ''}
+          onSelectOriginal={handleSelectOriginal}
+          onSelectCorrected={handleSelectCorrected}
+        />
       </div>
     );
   }
@@ -162,25 +262,24 @@ export default function SearchBar({ variant = 'hero', defaultValue = '' }: Searc
         />
         <button
           onClick={handleSearch}
-          className="flex items-center px-3 py-2 text-gray-500 hover:text-blue-700 transition-colors"
+          disabled={isValidating}
+          className="flex items-center px-3 py-2 text-gray-500 hover:text-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.35-4.35" />
-          </svg>
+          {isValidating ? spinnerIcon : searchIcon}
         </button>
       </div>
       {suggestionList}
+      {validationError && (
+        <p className="mt-2 text-sm text-red-600">{validationError}</p>
+      )}
+      <AddressValidationDialog
+        open={showCorrectionDialog}
+        onOpenChange={setShowCorrectionDialog}
+        originalAddress={pendingOriginalAddress}
+        correctedAddress={correctedAddress || ''}
+        onSelectOriginal={handleSelectOriginal}
+        onSelectCorrected={handleSelectCorrected}
+      />
     </div>
   );
 }

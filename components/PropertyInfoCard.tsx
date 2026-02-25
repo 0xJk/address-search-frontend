@@ -1,4 +1,5 @@
 interface PropertyInfo {
+  address?: string;
   standardized_address: string;
   suburb: string;
   state: string;
@@ -12,6 +13,9 @@ interface PropertyInfo {
   geocode_source: string;
   latitude: number | null;
   longitude: number | null;
+  gnaf_pid?: string | null;
+  gnaf_matched?: boolean | null;
+  gnaf_warning?: string | null;
 }
 
 interface PropertyInfoCardProps {
@@ -59,7 +63,20 @@ export default function PropertyInfoCard({ propertyInfo }: PropertyInfoCardProps
           <h2 className="text-lg font-semibold text-white">Property Information</h2>
         </div>
         <p className="text-white/90 text-sm mt-1">{propertyInfo.standardized_address}</p>
+        {propertyInfo.address && propertyInfo.address !== propertyInfo.standardized_address && (
+          <p className="text-white/70 text-xs mt-1">Original: {propertyInfo.address}</p>
+        )}
       </div>
+      {propertyInfo.gnaf_warning && (
+        <div className="px-6 py-3 bg-yellow-50 border-b border-yellow-200 text-yellow-800 text-sm flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+          {propertyInfo.gnaf_warning}
+        </div>
+      )}
       <div className="px-6 py-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
           <div>
@@ -83,6 +100,11 @@ export default function PropertyInfoCard({ propertyInfo }: PropertyInfoCardProps
             <InfoRow
               label="Coordinate Source"
               value={formatGeocodeSource(propertyInfo.geocode_source)}
+            />
+            <InfoRow label="GNAF PID" value={propertyInfo.gnaf_pid} />
+            <InfoRow
+              label="GNAF Matched"
+              value={propertyInfo.gnaf_matched === true ? 'Yes' : propertyInfo.gnaf_matched === false ? 'No' : null}
             />
           </div>
         </div>

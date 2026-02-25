@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
 
     const response = await fetch(`${apiUrl}/api/v1/geocode`, {
       method: 'POST',

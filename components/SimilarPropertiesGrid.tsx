@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 
 interface SimilarProperty {
   address: string;
+  suburb?: string | null;
   distance_meters: number;
   sale_date: string;
   sale_price: number | null;
@@ -102,6 +103,9 @@ export default function SimilarPropertiesGrid({ properties }: SimilarPropertiesG
                   <p className="text-sm font-medium text-gray-900 group-hover:text-blue-700 leading-snug">
                     {property.address}
                   </p>
+                  {property.suburb && (
+                    <p className="text-xs text-gray-500 mt-0.5">{property.suburb}</p>
+                  )}
                 </div>
                 <span className="ml-2 flex-shrink-0 text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
                   {formatDistance(property.distance_meters)}
