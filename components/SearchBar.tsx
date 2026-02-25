@@ -25,7 +25,8 @@ export default function SearchBar({ variant = 'hero', defaultValue = '' }: Searc
   const router = useRouter();
 
   const navigateToProperty = (addr: string) => {
-    router.push(`/property?address=${encodeURIComponent(addr)}`);
+    const cleaned = addr.replace(/,?\s*australia$/i, '').trim();
+    router.push(`/property?address=${encodeURIComponent(cleaned)}`);
   };
 
   const fetchSuggestions = async (input: string) => {
